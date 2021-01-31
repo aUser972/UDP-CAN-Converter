@@ -26,51 +26,98 @@
 #endif // DEBUG
 
 
-
+/** \brief Структура s_ConnectionParamUDP2CAN содержит параметры соединения типа UDP-CAN dev.
+ */
 typedef struct
 {
-    int port;
-    int dev;
-    char *name;
-    size_t size;
-    pthread_mutex_t *mutexIdCAN;
-    void *next;
-    int udpPackageSize;
-    volatile int status;
+    int port;                       /**< Номер входящего UDP порта */
+    int dev;                        /**< Номер оконечного устройства на CAN шине */
+    char *name;                     /**< Имя CAN интерфейса, на который отправляются данные */
+    size_t size;                    /**< Размер имени интерфейса */
+    pthread_mutex_t *mutexIdCAN;    /**< Указатель на mutex, блокирующий запись в сокет связанный с CAN шиной */
+    void *next;                     /**< Указатель на следующий элемент списка параметров соеденения */
+    int udpPackageSize;             /**< Размер UDP пакета данных */
+    volatile int status;            /**< Статус соеденения */
 }s_ConnectionParamUDP2CAN;
 
+/** \brief Структура s_ConnectionParamCAN2UDP содержит параметры соединения типа CAN-UDP.
+ */
 typedef struct
 {
-    char *ipAddr;
-    size_t ipSize;
-    int port;
-    char *name;
-    size_t nameSize;
-    void *next;
-    volatile int status;
+    char *ipAddr;           /**< Исходящий IP адрес */
+    size_t ipSize;          /**< Размер IP адреса в байтах */
+    int port;               /**< Номер исходящего UDP порта */
+    char *name;             /**< Имя CAN интерфейса, с которого приходят данные */
+    size_t nameSize;        /**< Размер имени CAN интерфейса в байтах */
+    void *next;             /**< Указатель на следующий элемент списка параметров соеденения */
+    volatile int status;    /**< Статус соеденения */
 }s_ConnectionParamCAN2UDP;
 
-static s_ConnectionParamUDP2CAN *firstUDP2CAN = NULL;
-static s_ConnectionParamUDP2CAN *lastUDP2CAN = NULL;
-static s_ConnectionParamCAN2UDP *firstCAN2UDP = NULL;
-static s_ConnectionParamCAN2UDP *lastCAN2UDP = NULL;
+static s_ConnectionParamUDP2CAN *firstUDP2CAN = NULL; /**< Указатель на первый элемент в списке параметров подключения типа UDP-CAN dev */
+static s_ConnectionParamUDP2CAN *lastUDP2CAN = NULL; /**< Указатель на последний элемент в списке параметров подключения типа UDP-CAN dev */
+static s_ConnectionParamCAN2UDP *firstCAN2UDP = NULL; /**< Указатель на первый элемент в списке параметров подключения типа CAN-UDP */
+static s_ConnectionParamCAN2UDP *lastCAN2UDP = NULL; /**< Указатель на последний элемент в списке параметров подключения типа CAN-UDP */
 
-static connectionUDP2CANCounter = 0;
-static connectionCAN2UDPCounter = 0;
+static connectionUDP2CANCounter = 0; /**< Количество соеденений типа UDP-CAN dev */
+static connectionCAN2UDPCounter = 0; /**< Количество соеденений типа CAN-UDP */
 
 /** \brief Функция ConverterUDP2CAN упаковывает полученные данные в структуру s_ConnectionParamUDP2CAN,
- *  создает поток, в котором вызывает функцию создания
+ *  записывает структуру в односвязанный список, инициализирует mutex, создает поток,
+ *  вызывающий функцию CreateConnectionUDP2CAN.
  *
- * \param
- * \param
- * \return
+ * \param [in] dev_addr адрес устройства получателя на CAN шине.
+ * \param [in] interface_name имя CAN интерфейса получателя.
+ * \param [in] name_size длина имени CAN интерфейса в байтах..
+ * \param [in] udp_pack_size длина данных UDP пакета.
+ * \param [in] port_num номер UDP порта отправителя.
+ * \return номер подключения, -1 - ошибка.
  *
  */
-int ConverterUDP2CAN(int port_num, int dev_addr, char *interface_name, size_t name_size, int udp_pack_size);
+int ConverterUDP2CAN(int dev_addr, char *interface_name, size_t name_size, int udp_pack_size, int port_num);
+
+/** \brief Функция ConverterCAN2UDP упаковывает полученные данные в структуру s_ConnectionParamCAN2UDP,
+ *  записывает структуру в односвязанный список, создает поток, вызывающий функцию CreateConnectionCAN2UDP.
+ *
+ * \param [in] ip_addr IP адрес получателя.
+ * \param [in] ip_size длина IP адреса в байтах.
+ * \param [in] port_num номер UDP порта получателя.
+ * \param [in] interface_name имя CAN интерфейса отправителя.
+ * \param [in] name_size длина имени CAN интерфейса в байтах.
+ * \return номер подключения, -1 - ошибка.
+ *
+ */
 int ConverterCAN2UDP(char* ip_addr, size_t ip_size, int port_num, char* interface_name, size_t name_size);
+
+/** \brief Функция CreateConnectionUDP2CAN создает UDP сокет для прослушки и CAN сокет для отправки.
+ *  Данные, пришедшие в UDP порт упаковываются в CAN фрейм и отправляются соответствующему устройству на CAN шине.
+ *
+ * \param [in] arg указатель на структуру типа s_ConnectionParamUDP2CAN, в которой хранятся параметры подключения.
+ *
+ */
 void *CreateConnectionUDP2CAN(void *arg);
+
+/** \brief Функция CreateConnectionCAN2UDP создает CAN сокет для прослушки и UDP соект для отправки.
+ *  Данные, пришедшие из CAN сокета записываются в UDP сокет и отправляются по IP адресу,
+ *  указанному в соответствующей структуре s_ConnectionParamCAN2UDP.
+ *  NOTE: Адрес CAN устройства в UDP пакет не записывается.
+ *
+ * \param [in] arg указатель на структуру типа s_ConnectionParamCAN2UDP, в которой хранятся параметры подключения.
+ *
+ */
 void *CreateConnectionCAN2UDP(void *arg);
+
+/** \brief Функция StopUDP2CANConvertion завершает работу конвертирующего соеденения типа UDP-CAN dev.
+ *
+ * \param [in] connectionNum номер соеденения, которое необходимо завершить.
+ *
+ */
 void StopUDP2CANConvertion(int connectionNum);
+
+/** \brief Функция StopCAN2UDPConvertion завершает работу конвертирующего соеденения типа CAN-UDP.
+ *
+ * \param [in] connectionNum номер соеденения, которое необходимо завершить.
+ *
+ */
 void StopCAN2UDPConvertion(int connectionNum);
 
 #endif // CONVERTER_H_INCLUDED

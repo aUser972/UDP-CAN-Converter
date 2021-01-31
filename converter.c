@@ -1,6 +1,6 @@
 #include "converter.h"
 
-int ConverterUDP2CAN(int port_num, int dev_addr, char *interface_name, size_t name_size, int udp_pack_size)
+int ConverterUDP2CAN(int dev_addr, char *interface_name, size_t name_size, int udp_pack_size, int port_num)
 {
     pid_t tid;
     s_ConnectionParamUDP2CAN *conn;
@@ -13,6 +13,7 @@ int ConverterUDP2CAN(int port_num, int dev_addr, char *interface_name, size_t na
     conn->udpPackageSize = udp_pack_size;
     memcpy(conn->name, interface_name, name_size);
 
+    //Поиск открытых соеденений на таком же интерфейсе, чтобы юзать один mutex
     for(int i=0; i<connectionUDP2CANCounter;i++)
     {
             if(0 == strcmp(tmp->name, interface_name))
@@ -30,6 +31,7 @@ int ConverterUDP2CAN(int port_num, int dev_addr, char *interface_name, size_t na
     }
     else {
         lastUDP2CAN->next = (void*)conn;
+        lastUDP2CAN = conn;
     }
 
     if(!conn->mutexIdCAN)
@@ -41,7 +43,7 @@ int ConverterUDP2CAN(int port_num, int dev_addr, char *interface_name, size_t na
     if(pthread_create(&tid, NULL, CreateConnectionUDP2CAN, conn))
     {
         perror("Error while create thread");
-        return;
+        return -1;
     }
     connectionUDP2CANCounter++;
     return connectionUDP2CANCounter;
@@ -61,11 +63,23 @@ int ConverterCAN2UDP(char* ip_addr, size_t ip_size, int port_num, char* interfac
     memcpy(conn->ipAddr, ip_addr, ip_size);
     memcpy(conn->name, interface_name, name_size);
 
+    if(0 == connectionCAN2UDPCounter)
+    {
+        firstCAN2UDP = conn;
+        lastCAN2UDP = conn;
+    }
+    else {
+        lastCAN2UDP->next = (void*)conn;
+        lastCAN2UDP = conn;
+    }
+
     if(pthread_create(&tid, NULL, CreateConnectionCAN2UDP, conn))
     {
         perror("Error while create thread");
-        return;
+        return -1;
     }
+    connectionCAN2UDPCounter++;
+    return connectionCAN2UDPCounter;
 }
 
 void *CreateConnectionUDP2CAN(void *arg)
@@ -195,7 +209,6 @@ void *CreateConnectionCAN2UDP(void *arg)
     LOG_ARG("CAN interface %s and %s:%d already connected\n", connection->name, connection->ipAddr, connection->port);
     while(connection->status)
     {
-
         nbytes = read(sockCAN, &frame, sizeof(struct can_frame));
         LOG_ARG("Read from UDP port %d %d bytes: ", connection->port, nbytes);
         for(int i = 0; i<8; i++)
@@ -212,7 +225,7 @@ void *CreateConnectionCAN2UDP(void *arg)
 void StopUDP2CANConvertion(int connectionNum)
 {
     s_ConnectionParamUDP2CAN *tmp = firstUDP2CAN;
-    for(int i=1; i<connectionNum; i++)
+    for(int i=1; i < connectionNum; i++)
     {
         tmp = (s_ConnectionParamUDP2CAN*)(tmp->next);
     }
