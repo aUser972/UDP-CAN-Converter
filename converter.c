@@ -1,5 +1,6 @@
 #include "converter.h"
 
+
 int ConverterUDP2CAN(int dev_addr, char *interface_name, size_t name_size, int udp_pack_size, int port_num)
 {
     pid_t tid;
@@ -54,6 +55,7 @@ int ConverterCAN2UDP(char* ip_addr, size_t ip_size, int port_num, char* interfac
     pid_t tid;
 
     s_ConnectionParamCAN2UDP *conn;
+    s_ConnectionParamCAN2UDP *tmp = firstCAN2UDP;
     conn = calloc(sizeof(s_ConnectionParamCAN2UDP), sizeof(char));
     conn->ipAddr = calloc(ip_size, sizeof(char));
     conn->name = calloc(name_size, sizeof(char));
@@ -63,6 +65,17 @@ int ConverterCAN2UDP(char* ip_addr, size_t ip_size, int port_num, char* interfac
     memcpy(conn->ipAddr, ip_addr, ip_size);
     memcpy(conn->name, interface_name, name_size);
 
+    //Поиск открытых соеденений на таком же интерфейсе, чтобы юзать один mutex
+    for(int i=0; i<connectionCAN2UDPCounter;i++)
+    {
+            if(tmp->port == conn->port)
+            {
+                conn->mutexIdUDP = tmp->mutexIdUDP;
+                break;
+            }
+            tmp = (s_ConnectionParamCAN2UDP*)(tmp->next);
+    }
+
     if(0 == connectionCAN2UDPCounter)
     {
         firstCAN2UDP = conn;
@@ -71,6 +84,12 @@ int ConverterCAN2UDP(char* ip_addr, size_t ip_size, int port_num, char* interfac
     else {
         lastCAN2UDP->next = (void*)conn;
         lastCAN2UDP = conn;
+    }
+
+    if(!conn->mutexIdUDP)
+    {
+        conn->mutexIdUDP = malloc(sizeof(pthread_mutex_t));
+        pthread_mutex_init(conn->mutexIdUDP, NULL);
     }
 
     if(pthread_create(&tid, NULL, CreateConnectionCAN2UDP, conn))
@@ -137,19 +156,23 @@ void *CreateConnectionUDP2CAN(void *arg)
     frame.can_id = connection->dev;
     frame.can_dlc = 8;
     LOG_ARG("UDP port %d and CAN dev %d on interface %s already connected\n", connection->port, connection->dev, connection->name);
+    memcpy(frame.data, "Hello", sizeof(frame.data));
     while(connection->status)
     {
         nbytes =read(sockIn, udpBuffer, frame.can_dlc);
+        LOG_ARG("Bytes read %d\n", nbytes);
         pthread_mutex_lock(connection->mutexIdCAN);
-        LOG_ARG("Read from UDP port %d %d bytes", connection->port, nbytes);
+        /*LOG_ARG("Read from UDP port %d %d bytes", connection->port, nbytes);
         for(int i = 0; i < nbytes; i+8)
         {
             write(sockCAN, &udpBuffer[i], sizeof(struct can_frame));
         }
-        LOG("\n");
+        LOG("\n");*/
         pthread_mutex_unlock(connection->mutexIdCAN);
 
-        memset(frame.data, 0, frame.can_dlc);
+        write(sockCAN, &frame, sizeof(struct can_frame));
+        LOG("Write to CAN interface\n");
+        //memset(frame.data, 0, frame.can_dlc);
     }
     LOG_ARG("Connection between UDP port %d and CAN dev %d on interface %s stopped\n", connection->port, connection->dev, connection->name);
 }
@@ -166,6 +189,7 @@ void *CreateConnectionCAN2UDP(void *arg)
     int sockCAN = 0;
     int sockOut = 0;
     int nbytes;
+
 
     sockCAN = socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if(-1 == sockCAN)
@@ -210,14 +234,9 @@ void *CreateConnectionCAN2UDP(void *arg)
     while(connection->status)
     {
         nbytes = read(sockCAN, &frame, sizeof(struct can_frame));
-        LOG_ARG("Read from UDP port %d %d bytes: ", connection->port, nbytes);
-        for(int i = 0; i<8; i++)
-        {
-            LOG_ARG("%x ", frame.data[i]);
-        }
-        LOG("\n");
+        pthread_mutex_lock(connection->mutexIdUDP);
         write(sockOut, frame.data, sizeof(frame.data));
-        memset(&frame, 0, sizeof(struct can_frame));
+        pthread_mutex_unlock(connection->mutexIdUDP);
     }
     LOG_ARG("Connection CAN interface %s and %s:%d stopped\n", connection->name, connection->ipAddr, connection->port);
 }

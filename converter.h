@@ -44,13 +44,14 @@ typedef struct
  */
 typedef struct
 {
-    char *ipAddr;           /**< Исходящий IP адрес */
-    size_t ipSize;          /**< Размер IP адреса в байтах */
-    int port;               /**< Номер исходящего UDP порта */
-    char *name;             /**< Имя CAN интерфейса, с которого приходят данные */
-    size_t nameSize;        /**< Размер имени CAN интерфейса в байтах */
-    void *next;             /**< Указатель на следующий элемент списка параметров соеденения */
-    volatile int status;    /**< Статус соеденения */
+    char *ipAddr;                   /**< Исходящий IP адрес */
+    size_t ipSize;                  /**< Размер IP адреса в байтах */
+    int port;                       /**< Номер исходящего UDP порта */
+    char *name;                     /**< Имя CAN интерфейса, с которого приходят данные */
+    size_t nameSize;                /**< Размер имени CAN интерфейса в байтах */
+    pthread_mutex_t *mutexIdUDP;    /**< Указатель на mutex, блокирующий запись в сокет связанный с UDP портом */
+    void *next;                     /**< Указатель на следующий элемент списка параметров соеденения */
+    volatile int status;            /**< Статус соеденения */
 }s_ConnectionParamCAN2UDP;
 
 static s_ConnectionParamUDP2CAN *firstUDP2CAN = NULL; /**< Указатель на первый элемент в списке параметров подключения типа UDP-CAN dev */
