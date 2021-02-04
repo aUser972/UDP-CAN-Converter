@@ -1,6 +1,5 @@
 #include "converter.h"
 
-
 int ConverterUDP2CAN(int dev_addr, char *interface_name, size_t name_size, int udp_pack_size, int port_num)
 {
 
@@ -153,7 +152,9 @@ void *CreateConnectionUDP2CAN(void *arg)
 
     frame.can_id = connection->dev;
     frame.can_dlc = 8;
-    LOG_ARG("UDP port %d and CAN dev %d on interface %s already connected\n", connection->port, connection->dev, connection->name);
+
+
+
     while(connection->status)
     {
         nbytes =read(sockIn, udpBuffer, connection->udpPackageSize);
@@ -174,7 +175,7 @@ void *CreateConnectionUDP2CAN(void *arg)
         pthread_mutex_unlock(connection->mutexIdCAN);
         nbytes = 0;
     }
-    LOG_ARG("Connection between UDP port %d and CAN dev %d on interface %s stopped\n", connection->port, connection->dev, connection->name);
+    free(connection);
 }
 
 void *CreateConnectionCAN2UDP(void *arg)
@@ -230,7 +231,6 @@ void *CreateConnectionCAN2UDP(void *arg)
         return;
     }
 
-    LOG_ARG("CAN interface %s and %s:%d already connected\n", connection->name, connection->ipAddr, connection->port);
     while(connection->status)
     {
         nbytes = read(sockCAN, &frame, sizeof(struct can_frame));
@@ -239,7 +239,7 @@ void *CreateConnectionCAN2UDP(void *arg)
         write(sockOut, frame.data, sizeof(frame.data));
         pthread_mutex_unlock(connection->mutexIdUDP);
     }
-    LOG_ARG("Connection CAN interface %s and %s:%d stopped\n", connection->name, connection->ipAddr, connection->port);
+    free(connection);
 }
 
 void StopUDP2CANConvertion(int connectionNum)

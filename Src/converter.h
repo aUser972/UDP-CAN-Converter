@@ -26,6 +26,7 @@
 #endif // DEBUG
 
 
+
 /** \brief Структура s_ConnectionParamUDP2CAN содержит параметры соединения типа UDP-CAN dev.
  */
 typedef struct
